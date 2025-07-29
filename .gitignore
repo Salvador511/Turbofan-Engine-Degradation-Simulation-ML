@@ -7,3 +7,5 @@ __pycache__/
 data/
 # Configuraciones locales
 .ipynb_checkpoints/
+
+.DS_Store
