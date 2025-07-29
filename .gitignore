@@ -1,0 +1,9 @@
+# Entorno virtual
+.venv/
+# Archivos temporales
+__pycache__/
+*.pyc
+# Datos grandes
+data/
+# Configuraciones locales
+.ipynb_checkpoints/
