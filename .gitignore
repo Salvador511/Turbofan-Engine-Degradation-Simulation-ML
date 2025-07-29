@@ -9,3 +9,5 @@ data/
 .ipynb_checkpoints/
 
 .DS_Store
+
+sensor_trends_unit1.html
