@@ -62,11 +62,11 @@ def tune_random_forest(X_train, y_train, groups=None, n_iter=40, cv=5, random_st
 def train_xgboost(X_train, y_train):
     print("=== MODEL TRAINING: XGBoost ===")
     model = xgb.XGBRegressor(
-        n_estimators=50,
+        n_estimators=45,
         max_depth=4,
         learning_rate=0.01,
         subsample=0.9,
-        colsample_bytree=0.8,
+        colsample_bytree=0.99,
         random_state=42,
         n_jobs=-1,
         reg_lambda=4,
