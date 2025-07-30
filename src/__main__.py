@@ -3,6 +3,8 @@ from src import (
     train_random_forest, evaluate_model, custom_score, tune_random_forest,
     train_xgboost, tune_xgboost
 )
+from src.data_preparation import drop_useless_sensors
+from src.visualization import plot_correlation_heatmap
 import numpy as np
 
 def main():
@@ -13,7 +15,14 @@ def main():
     df_train = add_rul_labels(df_train)
     print("  - RUL calculated")
     df_train = normalize_by_unit(df_train)
+    
+    plot_correlation_heatmap(df_train, output_path="correlation_heatmap.png")
+    print("Correlation heatmap saved to correlation_heatmap.png")
+    
     print("  - Sensors normalized")
+    df_train = drop_useless_sensors(df_train)
+
+    print("  - Useless sensors dropped")
     print("Train shape:", df_train.shape)
     print("Train sample:")
     print(df_train.head())
@@ -27,6 +36,8 @@ def main():
     print("  - Data loaded")
     df_test = normalize_by_unit(df_test)
     print("  - Sensors normalized")
+    df_test = drop_useless_sensors(df_test)
+    print("  - Useless sensors dropped")
     rul_true = np.loadtxt(rul_path)
     max_cycles = df_test.groupby('unit')['time'].max().values
     df_test['RUL'] = 0
@@ -44,14 +55,16 @@ def main():
     print("=== VISUALIZATION ===")
     plot_sensor_trends(df_train, unit_id=1, sensors=['sensor_2', 'sensor_3'], output_path="sensor_trends_unit1.html")
     print("Plot saved to sensor_trends_unit1.html")
-
+    
     print("\n" + "="*60 + "\n")
 
     df_train = df_train.drop(columns=['unit', 'time'])
     df_test = df_test.drop(columns=['unit', 'time'])
 
     print("=== READY FOR MACHINE LEARNING ===")
-    feature_cols = ['op_setting_1', 'op_setting_2', 'op_setting_3'] + [f'sensor_{i}' for i in range(1, 22)]
+    feature_cols = ['op_setting_1', 'op_setting_2', 'op_setting_3'] + [
+        col for col in df_train.columns if col.startswith('sensor_')
+    ]
     X_train = df_train[feature_cols]
     y_train = df_train['RUL']
     X_test = last_cycles[feature_cols]
