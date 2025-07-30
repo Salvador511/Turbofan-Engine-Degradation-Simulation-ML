@@ -7,8 +7,18 @@ import xgboost as xgb
 
 def train_random_forest(X_train, y_train):
     print("=== MODEL TRAINING: RandomForestRegressor ===")
-    model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+    print(f"X_train shape: {X_train.shape}")
+    model = RandomForestRegressor(
+        n_estimators=300,
+        max_depth=10,
+        min_samples_split=2,
+        min_samples_leaf=1,
+        random_state=42,
+        n_jobs=-1,
+        verbose=1
+    )
     model.fit(X_train, y_train)
+    print("RandomForestRegressor training complete.")
     return model
 
 def evaluate_model(model, X_test, y_test):
@@ -78,16 +88,16 @@ def train_xgboost(X_train, y_train):
 def tune_xgboost(X_train, y_train, groups=None, n_iter=40, cv=5, random_state=42):
     print("=== HYPERPARAMETER TUNING: XGBoost (RandomizedSearchCV, GroupKFold) ===")
     param_dist = {
-        'n_estimators': [40, 50, 60, 80, 100],
-        'max_depth': [3, 4, 5, 6],
-        'learning_rate': [0.005, 0.01, 0.015, 0.02],
-        'subsample': [0.8, 0.85, 0.9, 0.95, 1.0],
+        'n_estimators': [50, 100, 200, 300, 400, 500],
+        'max_depth': [3, 4, 5, 6, 8, 10],
+        'learning_rate': [0.005, 0.01, 0.015, 0.02, 0.03],
+        'subsample': [0.7, 0.8, 0.85, 0.9, 1.0],
         'colsample_bytree': [0.7, 0.8, 0.9, 1.0],
         'gamma': [0, 0.05, 0.1, 0.2],
         'reg_alpha': [0.05, 0.1, 0.2, 0.5],
         'reg_lambda': [2, 3, 4, 5]
     }
-    model = xgb.XGBRegressor(random_state=random_state, n_jobs=-1, tree_method='hist')
+    model = xgb.XGBRegressor(random_state=random_state, n_jobs=-1)
     if groups is not None:
         gkf = GroupKFold(n_splits=cv)
         cv_split = gkf.split(X_train, y_train, groups=groups)

@@ -2,8 +2,9 @@ from src import (
     load_cmaps_data, add_rul_labels, normalize_by_unit, plot_sensor_trends,
     evaluate_model, custom_score, tune_xgboost, train_xgboost
 )
-from src.data_preparation import drop_useless_sensors
+from src.data_preparation import drop_useless_sensors, add_advanced_features
 from src.visualization import plot_correlation_heatmap, plot_rul_distribution, plot_rul_trends
+from src.model_training import train_xgboost, train_random_forest
 import numpy as np
 import pandas as pd
 
@@ -50,40 +51,54 @@ def main():
     print("\n" + "="*60 + "\n")
 
     print("=== VISUALIZATION ===")
-    # Visualizar sensores para una unidad
     plot_sensor_trends(df_train, unit_id=1, sensors=['sensor_2', 'sensor_3'], output_path="sensor_trends_unit1.html")
     print("Plot saved to sensor_trends_unit1.html")
-    # Visualizar distribución de RUL
     plot_rul_distribution(df_train, output_path="rul_distribution.png")
     print("RUL distribution plot saved to rul_distribution.png")
-
-    # Visualizar tendencias de RUL
     plot_rul_trends(df_train, units=[1, 2, 3, 4, 5], output_path="rul_trends.html")
     print("RUL trends plot saved to rul_trends.html")
-
-    # Visualizar correlación entre sensores y RUL
     plot_correlation_heatmap(df_train, output_path="correlation_heatmap.png")
     print("Correlation heatmap saved to correlation_heatmap.png")
 
     print("\n" + "="*60 + "\n")
 
     # Eliminar columnas no necesarias para el modelo
-    df_train = df_train.drop(columns=['unit', 'time'])
-    df_test = df_test.drop(columns=['unit', 'time'])
+    df_train = df_train.drop(columns=[ 'time'])
+    df_test = df_test.drop(columns=[ 'time'])
+
+    # Sensores originales más importantes (ajusta según tu importancia de features)
+    top_sensors = ['sensor_11', 'sensor_12', 'sensor_4', 'sensor_7', 'sensor_15', 'sensor_9']
+
+    for window in [5, 10, 20]:
+        for col in top_sensors:
+            trend_col = f"{col}_trend_{window}"
+            df_train[trend_col] = df_train.groupby('unit')[col].transform(
+                lambda x: x.rolling(window, min_periods=1).apply(
+                    lambda y: np.polyfit(range(len(y)), y, 1)[0] if len(y) > 1 else 0, raw=False
+                )
+            )
+            df_test[trend_col] = df_test.groupby('unit')[col].transform(
+                lambda x: x.rolling(window, min_periods=1).apply(
+                    lambda y: np.polyfit(range(len(y)), y, 1)[0] if len(y) > 1 else 0, raw=False
+                )
+            )
+
+    df_train = df_train.drop(columns=['unit'])
+    df_test = df_test.drop(columns=['unit'])
 
     print("=== READY FOR MACHINE LEARNING ===")
-    # Definir todas las features sin incluir características derivadas
-    # Obtener dinámicamente las columnas de configuración operativa
-    op_setting_cols = [col for col in df_train.columns if col.startswith('op_setting_')]
+    # Incluye los trend en la selección de features
+    feature_cols = [col for col in df_train.columns if col.startswith('sensor_') or '_trend_' in col]
+    correlations = df_train[feature_cols + ['RUL']].corr()['RUL'].abs().sort_values(ascending=False)
+    top_features = correlations.index[1:21]  # Prueba con 10, 20, 40
+    feature_cols = [col for col in feature_cols if col in top_features]
 
-    # Solo usar los sensores sin las características de rolling (mean, std)
-    feature_cols = op_setting_cols + [
-        col for col in df_train.columns if col.startswith('sensor_')
-    ]
+    feature_cols = [col for col in feature_cols if col in last_cycles.columns]
+
     X_train = df_train[feature_cols]
     y_train = df_train['RUL']
     X_test = last_cycles[feature_cols]
-    y_test = rul_true
+    y_test = last_cycles['RUL']
 
     print("X_train shape:", X_train.shape)
     print("X_test shape:", X_test.shape)
@@ -92,25 +107,28 @@ def main():
 
     print("\n" + "="*60 + "\n")
 
-    # === MODEL SELECTION & TRAINING ===
     print("=== MODEL SELECTION & TRAINING ===")
-
-    # --- RANDOM FOREST ---
-    # rf_model = train_random_forest(X_train, y_train)
-    # (Opcional) Tuning:
-    # rf_model = tune_random_forest(X_train, y_train)
-
-    # --- XGBOOST ---
+    # XGBoost
     xgb_model = train_xgboost(X_train, y_train)
-    # (Opcional) Tuning:
-    #xgb_model = tune_xgboost(X_train, y_train)
+    print("\n--- XGBoost Feature Importances ---")
+    importances_xgb = xgb_model.feature_importances_
+    for col, imp in sorted(zip(feature_cols, importances_xgb), key=lambda x: -x[1])[:20]:
+        print(f"{col}: {imp:.4f}")
+    print("Features usados en el modelo:", feature_cols)
+    print("\n=== XGBoost EVALUATION ===")
+    y_pred_xgb, rmse_xgb, mae_xgb, r2_xgb = evaluate_model(xgb_model, X_test, y_test)
+    print(f"Custom Score (XGBoost): {custom_score(y_test, y_pred_xgb):.2f}")
 
-    print("\n" + "="*60 + "\n")
+    # RandomForest
+    # rf_model = train_random_forest(X_train, y_train)
+    # print("\n--- RandomForest Feature Importances ---")
+    # importances_rf = rf_model.feature_importances_
+    # for col, imp in sorted(zip(feature_cols, importances_rf), key=lambda x: -x[1])[:20]:
+    #     print(f"{col}: {imp:.4f}")
 
-    print("=== MODEL EVALUATION ===")
-    # y_pred, rmse, mae, r2 = evaluate_model(rf_model, X_test, y_test)  # Random Forest
-    y_pred, rmse, mae, r2 = evaluate_model(xgb_model, X_test, y_test)   # XGBoost
-    print(f"Custom Score: {custom_score(y_test, y_pred):.2f}")
+    # print("\n=== RandomForest EVALUATION ===")
+    # y_pred_rf, rmse_rf, mae_rf, r2_rf = evaluate_model(rf_model, X_test, y_test)
+    # print(f"Custom Score (RandomForest): {custom_score(y_test, y_pred_rf):.2f}")
 
 if __name__ == "__main__":
     main()
