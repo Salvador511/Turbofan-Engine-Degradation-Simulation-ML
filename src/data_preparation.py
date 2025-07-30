@@ -1,83 +1,84 @@
+"""
+Módulo de preparación de datos para el dataset CMAPSS.
+Carga, calcula RUL, normaliza y selecciona sensores útiles.
+"""
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import MinMaxScaler
 
-def load_cmaps_data(filepath):
+def load_cmapss_data(filepath):
     """
-    Carga un archivo C-MAPSS (por ejemplo, train_FD001.txt) y devuelve un DataFrame limpio.
-    - Elimina columnas vacías al final.
-    - Asigna nombres de columna estándar (unit, time, op_setting_1-3, sensor_1-21).
+    Carga el archivo de datos CMAPSS.
+    Args:
+        filepath (str): Ruta al archivo train_FD001.txt
+    Returns:
+        pd.DataFrame: DataFrame con los datos cargados
     """
-    df = pd.read_csv(filepath, sep=r"\s+", header=None)
-    # Eliminar columnas completamente vacías (pueden aparecer por espacios extra)
-    df = df.dropna(axis=1, how='all')
-    # Asignar nombres de columna (solo hasta sensor_21)
-    columns = (
-        ['unit', 'time', 'op_setting_1', 'op_setting_2', 'op_setting_3'] +
-        [f'sensor_{i}' for i in range(1, 22)]
-    )
-    df = df.iloc[:, :26]  # Solo las primeras 26 columnas (por si hay sensores extra)
-    df.columns = columns
+    # El dataset no tiene cabecera, columnas según documentación
+    columns = [
+        'unit', 'cycle',
+        'op_setting_1', 'op_setting_2', 'op_setting_3',
+        's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10',
+        's11', 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', 's20', 's21'
+    ]
+    df = pd.read_csv(filepath, sep='\s+', header=None, names=columns)
     return df
 
-def add_rul_labels(df, max_rul=200):
+def calculate_rul(df):
     """
-    Añade una columna 'RUL' al DataFrame.
-    RUL = ciclo máximo de la unidad - ciclo actual, limitado por max_rul.
+    Calcula el Remaining Useful Life (RUL) para cada ciclo de cada motor.
+    Args:
+        df (pd.DataFrame): DataFrame con los datos originales
+    Returns:
+        pd.DataFrame: DataFrame con columna 'RUL' añadida
     """
-    max_cycles = df.groupby('unit')['time'].transform('max')
-    df['RUL'] = (max_cycles - df['time']).clip(upper=max_rul)
+    rul_df = df.groupby('unit')['cycle'].max().reset_index()
+    rul_df.columns = ['unit', 'max_cycle']
+    df = df.merge(rul_df, on='unit', how='left')
+    df['RUL'] = df['max_cycle'] - df['cycle']
+    df.drop('max_cycle', axis=1, inplace=True)
     return df
 
-def normalize_by_unit(df):
+def normalize_features(df, feature_cols):
     """
-    Normaliza los sensores sensor_1 a sensor_21 por unidad usando Min-Max normalization.
-    No usa sklearn, solo pandas.
+    Normaliza las columnas numéricas por motor (unit) usando MinMaxScaler.
+    Args:
+        df (pd.DataFrame): DataFrame de entrada
+        feature_cols (list): Lista de columnas a normalizar
+    Returns:
+        pd.DataFrame: DataFrame con columnas normalizadas
     """
-    sensor_cols = [f'sensor_{i}' for i in range(1, 22)]
-    def min_max_norm(group):
-        return (group[sensor_cols] - group[sensor_cols].min()) / (group[sensor_cols].max() - group[sensor_cols].min())
-    normed = df.groupby('unit', group_keys=False).apply(
-        lambda g: g.assign(**min_max_norm(g))
-    )
-    df[sensor_cols] = normed[sensor_cols]
+    df_norm = df.copy()
+    scaler = MinMaxScaler()
+    for unit in df['unit'].unique():
+        idx = df['unit'] == unit
+        df_norm.loc[idx, feature_cols] = scaler.fit_transform(df.loc[idx, feature_cols])
+    return df_norm
+
+def select_useful_sensors(df):
+    """
+    Selecciona las columnas de sensores útiles según el artículo base.
+    Args:
+        df (pd.DataFrame): DataFrame de entrada
+    Returns:
+        pd.DataFrame: DataFrame solo con sensores útiles
+    """
+    # Según el artículo, sensores útiles para FD001: s2, s3, s4, s7, s8, s9, s11, s12, s13, s15, s17, s20, s21
+    useful_sensors = ['s2', 's3', 's4', 's7', 's8', 's9', 's11', 's12', 's13', 's15', 's17', 's20', 's21']
+    cols = ['unit', 'cycle'] + useful_sensors + ['RUL']
+    return df[cols]
+
+def prepare_data(filepath):
+    """
+    Pipeline de preparación de datos: carga, RUL, normalización y selección de sensores útiles.
+    Args:
+        filepath (str): Ruta al archivo train_FD001.txt
+    Returns:
+        pd.DataFrame: DataFrame listo para modelado
+    """
+    df = load_cmapss_data(filepath)
+    df = calculate_rul(df)
+    feature_cols = [col for col in df.columns if col.startswith('s')]
+    df = normalize_features(df, feature_cols)
+    df = select_useful_sensors(df)
     return df
-
-def drop_useless_sensors(df):
-    """
-    Elimina sensores que no aportan información relevante.
-    """
-    USELESS_SENSORS = ['op_setting_3', 'sensor_1', 'sensor_5', 'sensor_6', 'sensor_10', 'sensor_16', 'sensor_18', 'sensor_19']
-    return df.drop(columns=USELESS_SENSORS, errors='ignore')
-
-# def add_advanced_features(df, windows=[5, 10, 20]):
-#     """
-#     Agrega rolling mean, std, min, max, diff y tendencia para cada sensor por unidad.
-#     """
-#     sensor_cols = [col for col in df.columns if col.startswith('sensor_')]
-#     for window in windows:
-#         for col in sensor_cols:
-#             df[f'{col}_mean_{window}'] = df.groupby('unit')[col].transform(lambda x: x.rolling(window, min_periods=1).mean())
-#             df[f'{col}_std_{window}'] = df.groupby('unit')[col].transform(lambda x: x.rolling(window, min_periods=1).std())
-#             df[f'{col}_min_{window}'] = df.groupby('unit')[col].transform(lambda x: x.rolling(window, min_periods=1).min())
-#             df[f'{col}_max_{window}'] = df.groupby('unit')[col].transform(lambda x: x.rolling(window, min_periods=1).max())
-#             df[f'{col}_diff_{window}'] = df.groupby('unit')[col].transform(lambda x: x.diff(window).fillna(0))
-#             # Tendencia (pendiente de regresión lineal en la ventana)
-#             df[f'{col}_trend_{window}'] = df.groupby('unit')[col].transform(
-#                 lambda x: x.rolling(window, min_periods=1).apply(
-#                     lambda y: np.polyfit(range(len(y)), y, 1)[0] if len(y) > 1 else 0, raw=False
-#                 )
-#             )
-#     return df
-
-def add_advanced_features(df, windows=[5, 10, 20]):
-    sensor_cols = [col for col in df.columns if col.startswith('sensor_')]
-    new_features = []
-    for window in windows:
-        for col in sensor_cols:
-            new_features.append(
-                df.groupby('unit')[col].transform(lambda x: x.rolling(window, min_periods=1).mean()).rename(f'{col}_mean_{window}')
-            )
-    df_new = pd.concat([df] + new_features, axis=1)
-    return df_new.copy()
-
-# ...end of file...
