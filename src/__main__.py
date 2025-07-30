@@ -1,4 +1,8 @@
-from src import load_cmaps_data, add_rul_labels, normalize_by_unit, plot_sensor_trends
+from src import (
+    load_cmaps_data, add_rul_labels, normalize_by_unit, plot_sensor_trends,
+    train_random_forest, evaluate_model, custom_score, tune_random_forest,
+    train_xgboost, tune_xgboost
+)
 import numpy as np
 
 def main():
@@ -43,6 +47,9 @@ def main():
 
     print("\n" + "="*60 + "\n")
 
+    df_train = df_train.drop(columns=['unit', 'time'])
+    df_test = df_test.drop(columns=['unit', 'time'])
+
     print("=== READY FOR MACHINE LEARNING ===")
     feature_cols = ['op_setting_1', 'op_setting_2', 'op_setting_3'] + [f'sensor_{i}' for i in range(1, 22)]
     X_train = df_train[feature_cols]
@@ -54,6 +61,28 @@ def main():
     print("X_test shape:", X_test.shape)
     print("y_train shape:", y_train.shape)
     print("y_test shape:", y_test.shape)
+
+    print("\n" + "="*60 + "\n")
+
+    # === MODEL SELECTION & TRAINING ===
+    print("=== MODEL SELECTION & TRAINING ===")
+
+    # --- RANDOM FOREST ---
+    # rf_model = train_random_forest(X_train, y_train)
+    # (Opcional) Tuning:
+    # rf_model = tune_random_forest(X_train, y_train)
+
+    # --- XGBOOST ---
+    xgb_model = train_xgboost(X_train, y_train)
+    # (Opcional) Tuning:
+    #xgb_model = tune_xgboost(X_train, y_train)
+
+    print("\n" + "="*60 + "\n")
+
+    print("=== MODEL EVALUATION ===")
+    # y_pred, rmse, mae, r2 = evaluate_model(rf_model, X_test, y_test)  # Random Forest
+    y_pred, rmse, mae, r2 = evaluate_model(xgb_model, X_test, y_test)   # XGBoost
+    print(f"Custom Score: {custom_score(y_test, y_pred):.2f}")
 
 if __name__ == "__main__":
     main()
