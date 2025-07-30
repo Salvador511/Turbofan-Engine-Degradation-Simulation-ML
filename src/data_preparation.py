@@ -45,7 +45,7 @@ def drop_useless_sensors(df):
     """
     Elimina sensores que no aportan información relevante.
     """
-    USELESS_SENSORS = ['sensor_1', 'sensor_5', 'sensor_6', 'sensor_10', 'sensor_16', 'sensor_18', 'sensor_19']
+    USELESS_SENSORS = ['op_setting_3', 'sensor_1', 'sensor_5', 'sensor_6', 'sensor_10', 'sensor_16', 'sensor_18', 'sensor_19']
     return df.drop(columns=USELESS_SENSORS, errors='ignore')
 
 # ...end of file...

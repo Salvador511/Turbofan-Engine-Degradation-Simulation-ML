@@ -1,11 +1,11 @@
 from src import (
     load_cmaps_data, add_rul_labels, normalize_by_unit, plot_sensor_trends,
-    train_random_forest, evaluate_model, custom_score, tune_random_forest,
-    train_xgboost, tune_xgboost
+    evaluate_model, custom_score, tune_xgboost, train_xgboost
 )
 from src.data_preparation import drop_useless_sensors
-from src.visualization import plot_correlation_heatmap
+from src.visualization import plot_correlation_heatmap, plot_rul_distribution, plot_rul_trends
 import numpy as np
+import pandas as pd
 
 def main():
     print("=== DATA PREPARATION: TRAIN ===")
@@ -15,13 +15,8 @@ def main():
     df_train = add_rul_labels(df_train)
     print("  - RUL calculated")
     df_train = normalize_by_unit(df_train)
-    
-    plot_correlation_heatmap(df_train, output_path="correlation_heatmap.png")
-    print("Correlation heatmap saved to correlation_heatmap.png")
-    
     print("  - Sensors normalized")
     df_train = drop_useless_sensors(df_train)
-
     print("  - Useless sensors dropped")
     print("Train shape:", df_train.shape)
     print("Train sample:")
@@ -38,6 +33,8 @@ def main():
     print("  - Sensors normalized")
     df_test = drop_useless_sensors(df_test)
     print("  - Useless sensors dropped")
+
+    # Add RUL to test data
     rul_true = np.loadtxt(rul_path)
     max_cycles = df_test.groupby('unit')['time'].max().values
     df_test['RUL'] = 0
@@ -53,16 +50,34 @@ def main():
     print("\n" + "="*60 + "\n")
 
     print("=== VISUALIZATION ===")
+    # Visualizar sensores para una unidad
     plot_sensor_trends(df_train, unit_id=1, sensors=['sensor_2', 'sensor_3'], output_path="sensor_trends_unit1.html")
     print("Plot saved to sensor_trends_unit1.html")
-    
+    # Visualizar distribución de RUL
+    plot_rul_distribution(df_train, output_path="rul_distribution.png")
+    print("RUL distribution plot saved to rul_distribution.png")
+
+    # Visualizar tendencias de RUL
+    plot_rul_trends(df_train, units=[1, 2, 3, 4, 5], output_path="rul_trends.html")
+    print("RUL trends plot saved to rul_trends.html")
+
+    # Visualizar correlación entre sensores y RUL
+    plot_correlation_heatmap(df_train, output_path="correlation_heatmap.png")
+    print("Correlation heatmap saved to correlation_heatmap.png")
+
     print("\n" + "="*60 + "\n")
 
+    # Eliminar columnas no necesarias para el modelo
     df_train = df_train.drop(columns=['unit', 'time'])
     df_test = df_test.drop(columns=['unit', 'time'])
 
     print("=== READY FOR MACHINE LEARNING ===")
-    feature_cols = ['op_setting_1', 'op_setting_2', 'op_setting_3'] + [
+    # Definir todas las features sin incluir características derivadas
+    # Obtener dinámicamente las columnas de configuración operativa
+    op_setting_cols = [col for col in df_train.columns if col.startswith('op_setting_')]
+
+    # Solo usar los sensores sin las características de rolling (mean, std)
+    feature_cols = op_setting_cols + [
         col for col in df_train.columns if col.startswith('sensor_')
     ]
     X_train = df_train[feature_cols]

@@ -10,4 +10,6 @@ data/
 
 .DS_Store
 
-sensor_trends_unit1.html
+# Ignorar todos los archivos HTML y PNG generados
+*.html
+*.png
